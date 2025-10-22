@@ -5,7 +5,6 @@ import {
   parseEndpointOutput,
   parseMoqueryOutput,
   validateVlanAllowances,
-  generateCSV,
   extractVlanFromEpg,
   type ValidationResult,
   type EndpointData,

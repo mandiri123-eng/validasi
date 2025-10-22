@@ -102,14 +102,30 @@ export function validateVlanAllowances(
   pathAttachments: PathAttachment[]
 ): ValidationResult[] {
   const results: ValidationResult[] = [];
-  const allowedPaths = new Set(
+
+  // Create a map of path -> pod from moquery data
+  const pathPodMap = new Map<string, string>();
+  for (const att of pathAttachments) {
+    const podMatch = att.fullPath.match(/^(pod-\d+)\//);
+    if (podMatch) {
+      pathPodMap.set(att.path, podMatch[1]);
+    }
+  }
+
+  // Filter allowed paths by matching both VLAN and pod
+  const allowedPathsSet = new Set(
     pathAttachments
-      .filter(att => att.vlan === endpointData.vlan)
+      .filter(att => {
+        if (att.vlan !== endpointData.vlan) return false;
+
+        const attPod = att.fullPath.match(/^(pod-\d+)\//)?.[1];
+        return attPod === endpointData.pod;
+      })
       .map(att => att.path)
   );
 
   for (const path of endpointData.paths) {
-    const isAllowed = allowedPaths.has(path);
+    const isAllowed = allowedPathsSet.has(path);
 
     results.push({
       path,
@@ -135,20 +151,39 @@ export function generateCSV(
     .filter(r => r.status === 'not_allowed')
     .map(r => r.path);
 
+  // Build a map of path to full path from moquery data for correct pod info
   const pathMap = new Map<string, string>();
   for (const attachment of pathAttachments) {
     pathMap.set(attachment.path, attachment.fullPath);
   }
 
   const rows = notAllowedPaths.map(vpcPath => {
-    let fullPath = pathMap.get(vpcPath);
+    // Try to find matching path from moquery data with same pod
+    let fullPath = '';
 
+    // First, look for exact path match in moquery with matching vlan (to get correct pod)
+    for (const attachment of pathAttachments) {
+      if (attachment.path === vpcPath) {
+        // Extract pod from attachment
+        const podMatch = attachment.fullPath.match(/^(pod-\d+)\//);
+        if (podMatch) {
+          const attachmentPod = podMatch[1];
+          // Use this path if pod matches endpoint pod
+          if (attachmentPod === endpointData.pod) {
+            fullPath = attachment.fullPath;
+            break;
+          }
+        }
+      }
+    }
+
+    // If not found in moquery, construct path using endpoint pod
     if (!fullPath) {
       const protpathsMatch = vpcPath.match(/(\d+)-(\d+)-VPC/);
       if (protpathsMatch) {
         fullPath = `${endpointData.pod}/protpaths-${protpathsMatch[1]}-${protpathsMatch[2]}/pathep-[${vpcPath}]`;
       } else {
-        fullPath = `${endpointData.pod}/protpaths-XXX-XXX/pathep-[${vpcPath}]`;
+        fullPath = `${endpointData.pod}/paths-XXX/pathep-[${vpcPath}]`;
       }
     }
 
