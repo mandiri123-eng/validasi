@@ -70,7 +70,7 @@ function App() {
         return entry;
       }
 
-      const validationResults = validateVlanAllowances(parsedEndpoint, parsedMoquery);
+      const validationResults = validateVlanAllowances(parsedEndpoint, parsedMoquery, entry.epgName);
       return {
         ...entry,
         results: validationResults,

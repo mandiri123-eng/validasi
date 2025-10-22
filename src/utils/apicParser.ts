@@ -99,27 +99,36 @@ export function parseMoqueryOutput(input: string): PathAttachment[] {
 
 export function validateVlanAllowances(
   endpointData: EndpointData,
-  pathAttachments: PathAttachment[]
+  pathAttachments: PathAttachment[],
+  epgName?: string
 ): ValidationResult[] {
   const results: ValidationResult[] = [];
 
-  // Create a map of path -> pod from moquery data
-  const pathPodMap = new Map<string, string>();
-  for (const att of pathAttachments) {
-    const podMatch = att.fullPath.match(/^(pod-\d+)\//);
-    if (podMatch) {
-      pathPodMap.set(att.path, podMatch[1]);
-    }
-  }
+  // Normalize EPG name: remove 'epg-' prefix if present and convert to lowercase for comparison
+  const normalizeEpg = (name: string) => {
+    return name.toLowerCase().replace(/^epg-/i, '');
+  };
 
-  // Filter allowed paths by matching both VLAN and pod
+  const normalizedInputEpg = epgName ? normalizeEpg(epgName) : null;
+
+  // Filter allowed paths by matching VLAN, pod, and optionally EPG
   const allowedPathsSet = new Set(
     pathAttachments
       .filter(att => {
+        // Must match VLAN
         if (att.vlan !== endpointData.vlan) return false;
 
+        // Must match pod
         const attPod = att.fullPath.match(/^(pod-\d+)\//)?.[1];
-        return attPod === endpointData.pod;
+        if (attPod !== endpointData.pod) return false;
+
+        // If EPG name provided, must match EPG
+        if (normalizedInputEpg) {
+          const normalizedAttEpg = normalizeEpg(att.epg);
+          if (normalizedAttEpg !== normalizedInputEpg) return false;
+        }
+
+        return true;
       })
       .map(att => att.path)
   );
